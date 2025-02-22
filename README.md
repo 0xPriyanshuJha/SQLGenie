@@ -12,6 +12,7 @@ This project is a Streamlit-based Text-to-SQL interface that allows users to inp
 
 ### Prerequisites
 - Python 3.8+
+- Docker & Docker Compose (if running PostgreSQL in Docker)
 - PostgreSQL database with the Pagila schema
 - Google Gemini API key
 
@@ -36,14 +37,28 @@ pip install -r requirements.txt
 Create a `.env` file in the project directory and add the following details:
 ```
 GEMINI_API_KEY=<your_google_gemini_api_key>
-DB_NAME=<your_database_name>
-DB_USER=<your_database_user>
-DB_PASSWORD=<your_database_password>
-DB_HOST=<your_database_host>
-DB_PORT=<your_database_port>
+DB_NAME=pagila
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=localhost
+DB_PORT=5432
 ```
 
-### Step 5: Run the Application
+### Step 5: Running PostgreSQL with Docker
+If you don’t have PostgreSQL installed locally, you can run it using Docker:
+```sh
+docker-compose up -d
+```
+Alternatively, run PostgreSQL manually using:
+```sh
+docker run --name pagila-db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=pagila -p 5432:5432 -d postgres
+```
+To check if the database is running:
+```sh
+docker ps
+```
+
+### Step 6: Run the Application
 ```sh
 streamlit run app.py
 ```
@@ -64,6 +79,7 @@ streamlit run app.py
 - Check `.env` file for correct credentials.
 - Verify that the Google Gemini API key is valid.
 - If queries fail, check the schema information to ensure table and column names are correct.
+- If using Docker, ensure the container is running: `docker ps`.
 
 ## Contributions
 Feel free to fork the repository and submit pull requests for improvements or bug fixes.
