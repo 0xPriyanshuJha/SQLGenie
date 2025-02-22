@@ -1,3 +1,4 @@
 streamlit
 psycopg2
 google-generativeai
+dotenv
