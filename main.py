@@ -4,8 +4,10 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 
+# Loading environment variables
 load_dotenv()
 
+# Configuring the Gemini AI key
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def connect_db():
@@ -22,12 +24,37 @@ def connect_db():
         st.error(f"Database connection failed: {e}")
         return None
 
+def fetch_schema():
+    """Fetch database schema information dynamically"""
+    conn = connect_db()
+    if not conn:
+        return "Error: Could not retrieve schema."
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT table_name, column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+        """)
+        schema_data = cursor.fetchall()
+        conn.close()
+        
+        schema_info = ""
+        for table, column, dtype in schema_data:
+            schema_info += f"{table}.{column} ({dtype})\n"
+        
+        return schema_info
+    except psycopg2.Error as e:
+        return f"Error fetching schema: {e}"
+
+# generating sql query prompts
 def generate_sql(query, schema_info):
     """Build a prompt for the LLM to convert natural language to SQL."""
     prompt = f"""You are a Text-to-SQL assistant for the Pagila DVD rental database. 
     Given a natural language query, your task is to generate a valid SQL query that answers the question.
 
-PAGILA DATABASE SCHEMA:
+DATABASE SCHEMA:
 {schema_info}
 
 IMPORTANT GUIDELINES:
@@ -41,30 +68,20 @@ IMPORTANT GUIDELINES:
 8. Limit results when appropriate (e.g., TOP 10 films by revenue).
 9. Use PostgreSQL compatible syntax.
 
-EXAMPLES:
-User: "Show me all actors"
-SQL: SELECT * FROM actor;
-
-User: "How many films are there in each category?"
-SQL: SELECT c.name AS category_name, COUNT(fc.film_id) AS film_count FROM category c JOIN film_category fc ON c.category_id = fc.category_id GROUP BY c.name ORDER BY film_count DESC;
-
-User: "List customers who haven't rented anything"
-SQL: SELECT c.customer_id, c.first_name, c.last_name FROM customer c LEFT JOIN rental r ON c.customer_id = r.customer_id WHERE r.rental_id IS NULL;
-
 USER QUERY: {query}
 
 Respond with only the SQL query. If the query is ambiguous or can't be answered with the given schema, explain why and suggest how to clarify.
 SQL:
 """
     
-    
     try:
         model = genai.GenerativeModel("gemini-pro")
         response = model.generate_content(prompt)
-        return response.text.strip() if response.text else "Error: No response from AI"
+        return response.text.strip() if response and response.text else "Error: No valid SQL generated."
     except Exception as e:
         return f"Error generating SQL: {e}"
 
+# Excecuting the process
 def execute_query(sql):
     """Execute SQL query on PostgreSQL"""
     conn = connect_db()
@@ -83,21 +100,30 @@ def execute_query(sql):
         conn.rollback()
         return str(e), []
 
+# UI for the application
 def main():
     """Streamlit UI"""
     st.title("Text-to-SQL Agent for Pagila Database")
     user_input = st.text_area("Enter your question:")
-    schema_info = "(Fetch schema details here)"
-    
+
     if st.button("Generate & Run SQL"):
         if user_input:
+            schema_info = fetch_schema()
+            if "Error" in schema_info:
+                st.error(schema_info)
+                return
+
             sql_query = generate_sql(user_input, schema_info)
             st.code(sql_query, language='sql')
-            results, columns = execute_query(sql_query)
-            if columns:
-                st.dataframe(results, columns=columns)
+
+            if sql_query.startswith("Error"):
+                st.error(sql_query)
             else:
-                st.error(f"Query Execution Error: {results}")
+                results, columns = execute_query(sql_query)
+                if columns:
+                    st.dataframe(results, columns=columns)
+                else:
+                    st.error(f"Query Execution Error: {results}")
 
 if __name__ == "__main__":
     main()
